@@ -1,6 +1,7 @@
 const User = require('../models/user');
 const Token = require('../models/token');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const nodemailer = require('../config/nodemailer');
 const credentials = require('../config/credentials');
 
@@ -37,7 +38,7 @@ module.exports.verifyUser = async function (req, res) {
             tokenId: crypto.randomBytes(21).toString('base64'),
             user: isValidUser._id
         });
-        const resetLink = `http://localhost:8000/reset-password?accesstoken=${encodeURIComponent(token.tokenId)}`;
+        const resetLink = `http://localhost:8000/reset-password?accesstoken=${token.tokenId}`;
         // Send the email
         nodemailer.transporter.sendMail({
             from: credentials.GMAIL_ID,
@@ -64,19 +65,15 @@ module.exports.verifyUser = async function (req, res) {
 module.exports.resetPassword = async function (req, res) {
     try {
         const accessToken = req.query.accesstoken;
-
         const isValidToken = await Token.findOne({ tokenId: accessToken });
-
-        if (isValidToken) {
             return res.render('reset_password', {
                 title: "Change Password",
-                accessToken: accessToken,
+                accessToken: isValidToken,
             });
+        }catch (err) {
+            console.log('Error', err);
         }
-    } catch (err) {
-        console.log('Error', err);
-    }
-}
+    } 
 
 
 module.exports.updatePassword = async function (req, res) {
@@ -85,9 +82,9 @@ module.exports.updatePassword = async function (req, res) {
             req.flash('error', 'Passwords do not match');
             return res.redirect('back');
         }
-        const accesstoken = req.query.accesstoken;
-        await User.findByIdAndUpdate(accesstoken.user, { password: req.body.password });
-        await Token.findByIdAndDelete(accesstoken._id);
+        const accessToken = await Token.findOne({tokenId: req.query.accessToken});
+        await User.findByIdAndUpdate(accessToken.user, { password: await bcrypt.hash(req.body.password, 10)});
+        await Token.findByIdAndDelete(accessToken._id);
         req.flash('success', 'Password reset successful. Log in to continue');
         return res.redirect('/users/sign-in');
     } catch (err) {
